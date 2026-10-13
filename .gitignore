@@ -28,4 +28,3 @@ htmlcov/
 
 # Generated datasets
 data/sentinel/*.csv
-EOF
