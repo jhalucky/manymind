@@ -1,0 +1,27 @@
+{
+  "threshold": 0.131760116973928,
+  "target_recall": 0.9,
+  "selection_metric": "minimum_false_positive_rate",
+  "validation_anomaly_means": [
+    120,
+    115,
+    110
+  ],
+  "validation_seeds": [
+    3101,
+    3102,
+    3103,
+    3104,
+    3105
+  ],
+  "validation_metrics": {
+    "threshold": 0.131760116973928,
+    "tp": 270,
+    "fp": 1155,
+    "fn": 30,
+    "tn": 13845,
+    "precision": 0.18947368421052632,
+    "recall": 0.9,
+    "false_positive_rate": 0.077
+  }
+}

@@ -1,133 +1,102 @@
 
+import argparse
 import csv
 from pathlib import Path
 
 import numpy as np
-from sklearn.metrics import confusion_matrix
 
+from manymind.minds.sentinel.evaluation import (
+    HOLDOUT_ANOMALY_MEANS,
+    HOLDOUT_SEEDS,
+    assert_native_predict_matches_default_threshold,
+    calculate_metrics,
+    default_run_output,
+    holdout_thresholds,
+    resolve_writable_path,
+    score_splits,
+    validate_disjoint_splits,
+)
 from manymind.minds.sentinel.predict import load_model
+from manymind.minds.sentinel.synthetic import generate_labeled_dataset
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-OUTPUT_PATH = PROJECT_ROOT / "data" / "sentinel" / "final_threshold_evaluation.csv"
+def main(
+    output_path: Path | None = None,
+    config_path=None,
+    seeds=HOLDOUT_SEEDS,
+    anomaly_means=HOLDOUT_ANOMALY_MEANS,
+    **generator_kwargs,
+):
+    """Score frozen thresholds on holdout data. Does not select a threshold."""
+    validate_disjoint_splits()
 
-# Fresh seeds not used in the earlier calibration/comparison.
-RANDOM_SEEDS = [9101, 9102, 9103, 9104, 9105]
-
-ANOMALY_MEANS = [120, 115, 110]
-THRESHOLDS = [0.0, 0.05]
-
-
-def generate_test_data(anomaly_mean, seed):
-    rng = np.random.default_rng(seed)
-
-    normal = rng.normal(loc=100, scale=5, size=1000)
-    anomalies = rng.normal(loc=anomaly_mean, scale=3, size=20)
-
-    X = np.concatenate([normal, anomalies])
-    y = np.concatenate([
-        np.zeros(len(normal), dtype=int),
-        np.ones(len(anomalies), dtype=int),
-    ])
-
-    indices = rng.permutation(len(X))
-    return X[indices].reshape(-1, 1), y[indices]
-
-
-def calculate_metrics(y_true, scores, threshold):
-    y_pred = (scores < threshold).astype(int)
-
-    tn, fp, fn, tp = confusion_matrix(
-        y_true, y_pred, labels=[0, 1]
-    ).ravel()
-
-    precision = tp / (tp + fp) if tp + fp else 0.0
-    recall = tp / (tp + fn) if tp + fn else 0.0
-    f1 = (
-        2 * precision * recall / (precision + recall)
-        if precision + recall
-        else 0.0
-    )
-    fpr = fp / (fp + tn) if fp + tn else 0.0
-
-    return {
-        "threshold": float(threshold),
-        "precision": precision,
-        "recall": recall,
-        "f1": f1,
-        "false_positive_rate": fpr,
-        "tp": int(tp),
-        "fp": int(fp),
-        "fn": int(fn),
-        "tn": int(tn),
-    }
-
-
-def main():
+    if output_path is None:
+        destination = default_run_output(
+            "evaluate_final",
+            "final_threshold_evaluation.csv",
+        )
+    else:
+        destination = resolve_writable_path(output_path)
     model = load_model()
+    thresholds = holdout_thresholds(
+        config_path=config_path,
+        require_calibrated=True,
+    )
+
+    X_check, _y_check = generate_labeled_dataset(
+        seed=int(seeds[0]),
+        anomaly_mean=float(anomaly_means[0]),
+        **generator_kwargs,
+    )
+    assert_native_predict_matches_default_threshold(model, X_check)
+
     records = []
+    pooled_scores = []
+    pooled_labels = []
 
-    for anomaly_mean in ANOMALY_MEANS:
-        scenario_scores = []
-        scenario_labels = []
+    for anomaly_mean in anomaly_means:
+        scores, labels, _means = score_splits(
+            model,
+            seeds,
+            (anomaly_mean,),
+            **generator_kwargs,
+        )
+        pooled_scores.append(scores)
+        pooled_labels.append(labels)
 
-        for seed in RANDOM_SEEDS:
-            X, y = generate_test_data(anomaly_mean, seed)
-            scores = model.decision_function(X)
-
-            scenario_scores.append(scores)
-            scenario_labels.append(y)
-
-        scores = np.concatenate(scenario_scores)
-        labels = np.concatenate(scenario_labels)
-
-        for threshold in THRESHOLDS:
+        for threshold in thresholds:
             metrics = calculate_metrics(labels, scores, threshold)
             records.append({
                 "anomaly_mean": anomaly_mean,
+                "split": "holdout",
                 "observations": len(labels),
                 "actual_anomalies": int(labels.sum()),
                 **metrics,
             })
 
-    # Overall metrics across all three scenarios.
-    overall_records = []
+    all_scores = np.concatenate(pooled_scores)
+    all_labels = np.concatenate(pooled_labels)
 
-    for threshold in THRESHOLDS:
-        all_scores = []
-        all_labels = []
-
-        for anomaly_mean in ANOMALY_MEANS:
-            for seed in RANDOM_SEEDS:
-                X, y = generate_test_data(anomaly_mean, seed)
-                all_scores.append(model.decision_function(X))
-                all_labels.append(y)
-
-        metrics = calculate_metrics(
-            np.concatenate(all_labels),
-            np.concatenate(all_scores),
-            threshold,
-        )
-
-        overall_records.append({
+    for threshold in thresholds:
+        metrics = calculate_metrics(all_labels, all_scores, threshold)
+        records.append({
             "anomaly_mean": "ALL",
-            "observations": sum(len(y) for y in all_labels),
-            "actual_anomalies": sum(int(y.sum()) for y in all_labels),
+            "split": "holdout",
+            "observations": len(all_labels),
+            "actual_anomalies": int(all_labels.sum()),
             **metrics,
         })
 
-    records.extend(overall_records)
-
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-    with OUTPUT_PATH.open("w", newline="") as file:
+    with destination.open("w", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=records[0].keys())
         writer.writeheader()
         writer.writerows(records)
 
+    print("Sentinel holdout threshold evaluation")
+    print("Split: holdout (threshold was not selected on this data)")
     print(f"Model contamination: {model.contamination}")
-    print("Fresh evaluation seeds:", RANDOM_SEEDS)
-    print("Thresholds:", THRESHOLDS)
+    print("Holdout seeds:", list(seeds))
+    print("Thresholds:", thresholds)
     print("\nFinal threshold evaluation")
     print("-" * 95)
     print(
@@ -139,7 +108,7 @@ def main():
     for row in records:
         print(
             f"{str(row['anomaly_mean']):>10} "
-            f"{row['threshold']:10.3f} "
+            f"{row['threshold']:10.5f} "
             f"{row['precision']:10.3f} "
             f"{row['recall']:10.3f} "
             f"{row['f1']:10.3f} "
@@ -147,8 +116,29 @@ def main():
             f"{row['tp']:6d} {row['fp']:6d} {row['fn']:6d}"
         )
 
-    print(f"\nResults saved to: {OUTPUT_PATH}")
+    print(f"\nResults saved to: {destination}")
+    print("These synthetic holdout metrics do not establish real-world performance.")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description=(
+            "Evaluate frozen Sentinel thresholds on holdout data. "
+            "Requires a valid threshold.json candidate and writes a "
+            "unique run file instead of overwriting historical CSVs."
+        )
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Destination CSV path. Defaults to a unique run directory.",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Required calibrated threshold JSON. Defaults to artifacts/sentinel/threshold.json.",
+    )
+    args = parser.parse_args()
+    main(output_path=args.output, config_path=args.config)

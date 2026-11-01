@@ -1,0 +1,33 @@
+{
+  "name": "Sentinel",
+  "use_case": "credit-card fraud review",
+  "dataset": "ULB creditcard",
+  "openml_id": 1597,
+  "features": [
+    "V1-V28",
+    "Amount"
+  ],
+  "n_train": 170884,
+  "n_calibration": 56961,
+  "n_holdout": 56962,
+  "holdout_fraud_count": 99,
+  "threshold": 0.04531630854812239,
+  "threshold_rule": "score < threshold -> fraud",
+  "selection_metric": "maximum_f1 on calibration",
+  "holdout": {
+    "threshold": 0.04531630854812239,
+    "tp": 35,
+    "fp": 232,
+    "fn": 64,
+    "tn": 56631,
+    "precision": 0.13108614232209737,
+    "recall": 0.35353535353535354,
+    "f1": 0.1912568306010929,
+    "false_positive_rate": 0.004079981710426815,
+    "roc_auc": 0.9527879963840079,
+    "pr_auc": 0.13098713534219997
+  },
+  "sklearn_version": "1.9.1",
+  "trained_at": "2026-11-01T16:04:00.298723+00:00",
+  "disclaimer": "Public benchmark dataset. Not a live bank deployment. PR-AUC and precision/recall at the frozen threshold are the headline numbers, not accuracy."
+}

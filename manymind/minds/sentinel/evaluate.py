@@ -1,80 +1,62 @@
 
+import argparse
 from pathlib import Path
 
-import numpy as np
-from sklearn.metrics import (
-    classification_report,
-    confusion_matrix,
+import pandas as pd
+from sklearn.metrics import classification_report, confusion_matrix
+
+from manymind.minds.sentinel.evaluation import (
+    DEFAULT_THRESHOLD,
+    HOLDOUT_SEEDS,
+    assert_native_predict_matches_default_threshold,
+    calculate_metrics,
+    labels_from_scores,
+    new_run_directory,
+    resolve_writable_path,
+    validate_disjoint_splits,
 )
-
 from manymind.minds.sentinel.predict import load_model
+from manymind.minds.sentinel.synthetic import generate_labeled_dataset
 
 
-PROJECT_ROOT = Path("/home/lucky/ManyMind")
-DATA_DIR = PROJECT_ROOT / "data" / "sentinel"
+def generate_evaluation_data(seed: int = HOLDOUT_SEEDS[0], anomaly_mean: float = 120):
+    """Generate a labeled holdout snapshot. Not used for threshold selection."""
+    return generate_labeled_dataset(seed=seed, anomaly_mean=anomaly_mean)
 
 
-def generate_evaluation_data():
-    """Generate fresh data independent of training and tuning."""
-    rng = np.random.default_rng(2026)
+def evaluate(data_dir: Path | None = None):
+    validate_disjoint_splits()
 
-    normal = rng.normal(
-        loc=100,
-        scale=5,
-        size=1000,
-    )
+    if data_dir is None:
+        output_dir = new_run_directory("evaluate")
+    else:
+        output_dir = Path(data_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-    anomalies = rng.normal(
-        loc=120,
-        scale=3,
-        size=20,
-    )
+    destination = resolve_writable_path(output_dir / "final_test.csv")
 
-    X = np.concatenate([normal, anomalies])
-
-    y = np.concatenate([
-        np.zeros(len(normal), dtype=int),
-        np.ones(len(anomalies), dtype=int),
-    ])
-
-    indices = rng.permutation(len(X))
-
-    return X[indices].reshape(-1, 1), y[indices]
-
-
-def evaluate():
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Load the existing artifact; do not train again.
     model = load_model()
-
     X_test, y_test = generate_evaluation_data()
-
-    # Save the exact evaluation data for reproducibility.
-    import pandas as pd
+    assert_native_predict_matches_default_threshold(model, X_test)
 
     pd.DataFrame({
         "value": X_test.flatten(),
         "is_anomaly": y_test,
-    }).to_csv(DATA_DIR / "final_test.csv", index=False)
+    }).to_csv(destination, index=False)
 
-    predictions = model.predict(X_test)
-    y_pred = (predictions == -1).astype(int)
+    scores = model.score(X_test)
+    y_pred = labels_from_scores(scores, DEFAULT_THRESHOLD)
+    metrics = calculate_metrics(y_test, scores, DEFAULT_THRESHOLD)
 
-    tn, fp, fn, tp = confusion_matrix(
-        y_test,
-        y_pred,
-        labels=[0, 1],
-    ).ravel()
-
-    print("Sentinel final evaluation")
+    print("Sentinel holdout evaluation")
+    print("Split: holdout (default threshold 0.0)")
     print(f"Model contamination: {model.contamination}")
     print(f"Test observations: {len(X_test)}")
     print(f"Actual anomalies: {int(y_test.sum())}")
-    print(f"True positives: {tp}")
-    print(f"False positives: {fp}")
-    print(f"False negatives: {fn}")
-    print(f"True negatives: {tn}")
+    print(f"True positives: {metrics['tp']}")
+    print(f"False positives: {metrics['fp']}")
+    print(f"False negatives: {metrics['fn']}")
+    print(f"True negatives: {metrics['tn']}")
 
     print("\nConfusion matrix:")
     print(confusion_matrix(y_test, y_pred, labels=[0, 1]))
@@ -88,8 +70,22 @@ def evaluate():
         zero_division=0,
     ))
 
-    print(f"Evaluation data saved to: {DATA_DIR / 'final_test.csv'}")
+    print(f"Evaluation data saved to: {destination}")
+    print("These synthetic metrics do not establish real-world performance.")
 
 
 if __name__ == "__main__":
-    evaluate()
+    parser = argparse.ArgumentParser(
+        description=(
+            "Evaluate Sentinel at the default 0.0 threshold. "
+            "Writes a unique run file instead of overwriting "
+            "data/sentinel/final_test.csv."
+        )
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Directory for final_test.csv. Defaults to a unique run directory.",
+    )
+    evaluate(data_dir=parser.parse_args().output_dir)
