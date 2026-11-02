@@ -96,9 +96,8 @@ def predict_row(model, row, threshold=DEFAULT_THRESHOLD, index=None):
     }
 
 
-def predict_csv(model, path, threshold=DEFAULT_THRESHOLD):
-    """Score every row in a CSV that has V1–V28 and Amount columns."""
-    frame = pd.read_csv(path)
+def predict_frame(model, frame, threshold=DEFAULT_THRESHOLD):
+    """Score a DataFrame of credit-card rows."""
     missing = [name for name in FEATURES_NAMES if name not in frame.columns]
     if missing:
         raise ValueError(
@@ -110,6 +109,11 @@ def predict_csv(model, path, threshold=DEFAULT_THRESHOLD):
         predict_row(model, frame.loc[i], threshold=threshold, index=int(i))
         for i in frame.index
     ]
+
+
+def predict_csv(model, path, threshold=DEFAULT_THRESHOLD):
+    """Score every row in a CSV that has V1–V28 and Amount columns."""
+    return predict_frame(model, pd.read_csv(path), threshold=threshold)
 
 
 def main():

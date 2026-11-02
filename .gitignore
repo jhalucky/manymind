@@ -34,3 +34,4 @@ web/node_modules/
 web/dist/
 
 data/sentinel/creditcard/
+data/classifier/telco/

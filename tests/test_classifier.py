@@ -84,3 +84,12 @@ def test_save_and_load(tmp_path, training_data):
 def test_cannot_save_unfitted_model(tmp_path):
     with pytest.raises(RuntimeError, match="unfitted"):
         ChurnClassifier().save(tmp_path / "model.joblib")
+
+
+def test_load_telco_fixture_has_expected_schema():
+    from manymind.minds.classifier.data import FEATURE_NAMES, load_telco
+
+    X, y = load_telco("tests/fixtures/telco_sample.csv")
+    assert list(X.columns) == FEATURE_NAMES
+    assert set(y.unique()).issubset({0, 1})
+    assert len(X) == len(y) >= 20

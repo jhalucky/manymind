@@ -3,24 +3,57 @@ from pathlib import Path
 from typing import Any
 
 import joblib
+import numpy as np
+import pandas as pd
+from sklearn.compose import ColumnTransformer, make_column_selector
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder
 
 from manymind.core.base import BaseMind
+
+
+def _as_frame(X: Any) -> pd.DataFrame:
+    if isinstance(X, pd.DataFrame):
+        return X
+    return pd.DataFrame(np.asarray(X))
 
 
 class ChurnClassifier(BaseMind):
     """Predict customer churn using supervised learning.
 
-    This model is intended for experimentation with synthetic data,
-    not for making real-world customer decisions.
+    Production training uses the public IBM Telco dataset. The same
+    wrapper still accepts numeric arrays so unit tests stay lightweight.
     """
 
     def __init__(self) -> None:
+        numeric = Pipeline([("imputer", SimpleImputer(strategy="median"))])
+        categorical = Pipeline(
+            [
+                ("imputer", SimpleImputer(strategy="most_frequent")),
+                ("onehot", OneHotEncoder(handle_unknown="ignore")),
+            ]
+        )
         self.pipeline = Pipeline(
             [
-                ("imputer", SimpleImputer(strategy="median")),
+                (
+                    "preprocess",
+                    ColumnTransformer(
+                        [
+                            (
+                                "num",
+                                numeric,
+                                make_column_selector(dtype_include=np.number),
+                            ),
+                            (
+                                "cat",
+                                categorical,
+                                make_column_selector(dtype_exclude=np.number),
+                            ),
+                        ]
+                    ),
+                ),
                 (
                     "classifier",
                     RandomForestClassifier(
@@ -37,7 +70,7 @@ class ChurnClassifier(BaseMind):
         if y is None:
             raise ValueError("Training labels y are required.")
 
-        self.pipeline.fit(X, y)
+        self.pipeline.fit(_as_frame(X), y)
         self.is_fitted = True
         return self
 
@@ -45,7 +78,7 @@ class ChurnClassifier(BaseMind):
         if not self.is_fitted:
             raise RuntimeError("Model must be fitted before prediction.")
 
-        return self.pipeline.predict(X)
+        return self.pipeline.predict(_as_frame(X))
 
     def score(self, X: Any) -> Any:
         """Return the predicted probability of churn (class 1)."""
@@ -59,7 +92,7 @@ class ChurnClassifier(BaseMind):
             raise RuntimeError("The fitted model has no churn class (1).")
 
         churn_index = classes.index(1)
-        return self.pipeline.predict_proba(X)[:, churn_index]
+        return self.pipeline.predict_proba(_as_frame(X))[:, churn_index]
 
     def save(self, path: str | Path) -> None:
         if not self.is_fitted:

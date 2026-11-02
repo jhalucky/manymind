@@ -1,0 +1,51 @@
+{
+  "name": "Classifier",
+  "use_case": "telecom customer churn",
+  "dataset": "IBM Telco Customer Churn",
+  "openml_id": 42178,
+  "features": [
+    "gender",
+    "SeniorCitizen",
+    "Partner",
+    "Dependents",
+    "tenure",
+    "PhoneService",
+    "MultipleLines",
+    "InternetService",
+    "OnlineSecurity",
+    "OnlineBackup",
+    "DeviceProtection",
+    "TechSupport",
+    "StreamingTV",
+    "StreamingMovies",
+    "Contract",
+    "PaperlessBilling",
+    "PaymentMethod",
+    "MonthlyCharges",
+    "TotalCharges"
+  ],
+  "n_train": 5634,
+  "n_holdout": 1409,
+  "holdout_churn_rate": 0.2654364797728886,
+  "holdout": {
+    "accuracy": 0.7636621717530163,
+    "precision": 0.548235294117647,
+    "recall": 0.6229946524064172,
+    "f1": 0.5832290362953693,
+    "roc_auc": 0.8230101526776719,
+    "pr_auc": 0.6041810279557793,
+    "confusion_matrix": [
+      [
+        843,
+        192
+      ],
+      [
+        141,
+        233
+      ]
+    ]
+  },
+  "sklearn_version": "1.9.1",
+  "trained_at": "2026-11-02T04:57:58.930030+00:00",
+  "disclaimer": "Public IBM sample dataset, not a live carrier. Lead with ROC-AUC and churn-class F1, not accuracy."
+}

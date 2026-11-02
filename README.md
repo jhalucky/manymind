@@ -1,116 +1,200 @@
+# ManyMind
 
-# Sentinel — Anomaly Detection Model
+ManyMind is an experimental Python machine learning project that organizes specialized models, called **Minds**, behind a shared interface.
 
-Sentinel is the first specialized model in **ManyMind**, a multi-model machine learning project.
+It is early-stage. Sentinel and Classifier are trained on **public benchmark datasets**. Those numbers are not a live bank or carrier deployment.
 
-It uses **Isolation Forest**, an unsupervised anomaly detection algorithm from scikit-learn, to identify unusual numerical observations. The project focuses on model training, inference, evaluation, threshold selection, and reproducible testing.
+## Current models
 
-> **Current status:** Sentinel v1 development.
-> Evaluation currently uses synthetic data. Real-world performance has not yet been established.
+Both existing models implement `BaseMind` from `manymind/core/base.py`.
 
-## Features
+| Mind | Task | Algorithm | Input |
+|---|---|---|---|
+| **Sentinel** | Credit-card fraud review | Isolation Forest | `V1`–`V28` + `Amount` |
+| **Classifier** | Telecom churn | Random Forest pipeline | IBM Telco customer fields |
 
-- Train and persist an Isolation Forest model.
-- Load the saved model for inference.
-- Classify numerical observations as normal or anomalous.
-- Expose anomaly scores through the prediction interface.
-- Configure the decision threshold without retraining.
-- Evaluate precision, recall, F1, and false-positive rate.
-- Run automated tests with pytest.
+### Sentinel
 
-## Project Structure
+Sentinel is an Isolation Forest fraud-review scorer trained on the public ULB credit-card dataset (`V1`–`V28` + `Amount`). A transaction is flagged when `score < threshold`. Training picks the threshold on a calibration split (max F1) and reports holdout ROC-AUC / PR-AUC in `artifacts/sentinel/metrics.json`.
+
+A person uses it by exporting a CSV of transactions, not by typing one number:
+
+```bash
+python -m manymind.minds.sentinel.train
+python -m manymind.minds.sentinel.predict --csv tests/fixtures/creditcard_sample.csv
+```
+
+### Classifier
+
+The classifier is a supervised churn model on the public IBM Telco dataset. The pipeline one-hot encodes categoricals, imputes numerics, then fits a balanced Random Forest. Train and score a customer CSV:
+
+```bash
+python -m manymind.minds.classifier.train
+python -m manymind.minds.classifier.predict --csv tests/fixtures/telco_sample.csv
+```
+
+## Shared BaseMind interface
+
+`manymind/core/base.py` defines the contract:
+
+| Method | Purpose |
+|---|---|
+| `fit(X, y=None)` | Train the model. `y` is required for the classifier and unused for Sentinel. |
+| `predict(X)` | Return model-specific class labels. |
+| `score(X)` | Return model-specific scores. These are **not** a shared, comparable scale. |
+| `save(path)` | Persist the underlying sklearn object. |
+| `load(path)` | Restore a previously saved artifact into the Mind wrapper. |
+
+`score()` is deliberately model-specific:
+
+- **Sentinel** returns Isolation Forest `decision_function` values.
+- **Classifier** returns the predicted probability of churn (class `1`).
+
+Do not compare Sentinel scores with classifier probabilities.
+
+### Sentinel scoring
+
+Isolation Forest exposes more than one numeric score. Sentinel uses them as follows:
+
+| Signal | Meaning |
+|---|---|
+| `score_samples()` | Raw Isolation Forest normality scores. Not exposed by `BaseMind`. |
+| `decision_function()` / `Sentinel.score()` | `score_samples` shifted by the fitted offset so the native boundary is `0.0`. Higher values are more normal. |
+| Threshold | The CLI labels a value `anomaly` when `score < threshold`. Default threshold: `0.0`. |
+| `Sentinel.predict()` | Isolation Forest labels: `1` (normal / inlier) and `-1` (anomaly / outlier), equivalent to `score < 0.0`. |
+
+Custom thresholds are a CLI concern. They are not stored on the `Sentinel` object.
+
+## Architecture
 
 ```text
 ManyMind/
 ├── manymind/
-│   ├── __init__.py
+│   ├── core/
+│   │   └── base.py                 # BaseMind interface
 │   └── minds/
-│       ├── __init__.py
-│       └── sentinel/
-│           ├── __init__.py
-│           ├── train.py
-│           ├── predict.py
-│           ├── evaluate.py
-│           ├── evaluate_robustness.py
-│           ├── calibrate.py
-│           ├── compare_thresholds.py
-│           └── evaluate_final.py
+│       ├── sentinel/
+│       │   ├── model.py            # Sentinel(BaseMind)
+│       │   ├── train.py
+│       │   ├── predict.py          # CLI inference
+│       │   ├── evaluate.py
+│       │   ├── evaluate_robustness.py
+│       │   ├── calibrate.py
+│       │   ├── compare_thresholds.py
+│       │   └── evaluate_final.py
+│       └── classifier/
+│           ├── model.py            # ChurnClassifier(BaseMind)
+│           └── train.py
 ├── artifacts/
-│   └── sentinel/
+│   ├── sentinel/
+│   │   ├── model.joblib
+│   │   └── threshold.json
+│   └── classifier/
 │       └── model.joblib
 ├── data/
-│   └── sentinel/
+│   └── sentinel/                   # generated CSVs (gitignored)
 ├── tests/
+│   ├── test_classifier.py
+│   ├── test_sentinel_model.py
+│   ├── test_sentinel_predict.py
+│   └── test_sentinel_train.py
 ├── README.md
 └── .gitignore
 ```
 
-## Requirements
+`save()` writes the sklearn estimator or pipeline, not the ManyMind wrapper. `load()` wraps that artifact again.
 
-- Python 3.10 or newer
-- NumPy
-- scikit-learn
-- joblib
-- pytest for testing
+## Setup
 
-Install the dependencies in your active Python environment:
+There is no `requirements.txt` or `pyproject.toml` yet. Dependency pinning and package installation are future improvements.
+
+Python **3.10+** is required (`str | Path` type syntax). Run commands from the repository root so `python -m manymind...` can import the local package.
 
 ```bash
-python -m pip install numpy scikit-learn joblib pytest
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install numpy pandas scikit-learn joblib pytest
 ```
 
-Run commands from the repository root so Python can find the `manymind` package.
+## Datasets
 
-## Train the Model
+Do not commit the full CSVs. Download them once into gitignored folders.
+
+**Sentinel — ULB credit-card fraud** (OpenML 1597). OpenML checksums are unreliable; use this mirror:
+
+```bash
+mkdir -p data/sentinel/creditcard
+curl -L --retry 3 -o data/sentinel/creditcard/creditcard.csv \
+  "https://huggingface.co/datasets/PELAB-LiU/JunoBench/resolve/main/benchmark/pandas_11/data/creditcard.csv"
+```
+
+You want about `(284807, 31)` rows/columns and **492** frauds (`Class == 1`).
+
+**Classifier — IBM Telco Customer Churn** (OpenML 42178):
+
+```bash
+mkdir -p data/classifier/telco
+curl -L --retry 3 -o data/classifier/telco/telco.csv \
+  "https://raw.githubusercontent.com/IBM/telco-customer-churn-on-icp4d/master/data/Telco-Customer-Churn.csv"
+```
+
+You want about `(7043, 21)` and a `Churn` column (`Yes`/`No`).
+
+Current runtime dependencies, based on imports in the implementation:
+
+| Package | Used for |
+|---|---|
+| NumPy | Synthetic data and array handling |
+| Pandas | Sentinel training CSV output and some evaluation scripts |
+| scikit-learn | Isolation Forest, Random Forest pipeline, metrics |
+| joblib | Model serialization |
+| pytest | Tests |
+
+## Usage
+
+Run these from the repository root, with the virtual environment activated.
+
+Train Sentinel (requires the credit-card CSV):
 
 ```bash
 python -m manymind.minds.sentinel.train
 ```
 
-Training generates normal observations from a synthetic numerical distribution and saves the trained model under `artifacts/sentinel/`.
+Writes `artifacts/sentinel/model.joblib`, `threshold.json`, and `metrics.json`.
 
-The current model uses an Isolation Forest with 100 trees and a contamination setting of `0.01`.
-
-The contamination parameter influences the model's default decision boundary; it does not guarantee a real-world anomaly rate.
-
-## Run Inference
-
-Classify one or more values:
+Predict with Sentinel — pass a CSV with columns `V1`…`V28`,`Amount` (shell, not the `>>>` prompt):
 
 ```bash
-python -m manymind.minds.sentinel.predict 100 115 150
+python -m manymind.minds.sentinel.predict --csv tests/fixtures/creditcard_sample.csv
 ```
 
-Example output:
-
-```text
-value=100.00 | prediction=normal | score=0.2652
-value=115.00 | prediction=anomaly | score=-0.0700
-value=150.00 | prediction=anomaly | score=-0.0731
-```
-
-Exact scores depend on the saved model artifact.
-
-### Custom Threshold
-
-Use a more sensitive decision threshold:
+Train the classifier (requires the telco CSV):
 
 ```bash
-python -m manymind.minds.sentinel.predict --threshold 0.05 100 115 150
+python -m manymind.minds.classifier.train
 ```
 
-Sentinel uses the following rule:
+Writes `artifacts/classifier/model.joblib` and `metrics.json`.
 
-- `score < threshold` → anomaly
-- `score >= threshold` → normal
+Predict with the classifier — pass a CSV with IBM Telco feature headers:
 
-A higher threshold flags more observations as anomalous. This can improve recall while increasing false positives.
+```bash
+python -m manymind.minds.classifier.predict --csv tests/fixtures/telco_sample.csv
+```
 
-The default threshold is `0.0`, matching Isolation Forest's existing `decision_function` boundary.
+Run tests:
 
-## Evaluation
+```bash
+python -m pytest -v
+```
 
-Sentinel includes scripts for evaluating the model and comparing decision thresholds:
+The tests cover Sentinel's `BaseMind` behavior, prediction and threshold rules, training artifact output, and classifier fit/predict/save/load. Training tests write to temporary directories and do not replace repository artifacts.
+
+Saved `*.joblib` files may already exist under `artifacts/`. Generated Sentinel CSVs under `data/sentinel/` are gitignored. Do not assume every local artifact is tracked.
+
+## Evaluation and limitations
+
+Sentinel includes experimental scripts that score the saved model on **synthetic** normal and anomaly distributions:
 
 ```bash
 python -m manymind.minds.sentinel.evaluate
@@ -120,60 +204,40 @@ python -m manymind.minds.sentinel.compare_thresholds
 python -m manymind.minds.sentinel.evaluate_final
 ```
 
-These experiments use synthetic normal and anomaly distributions.
+They report precision, recall, F1, and false-positive rate on generated labels. Those numbers are for threshold exploration. They are not evidence of real-world generalization.
 
-### Metrics
+Known limitations:
 
-| Metric | Meaning |
-|---|---|
-| Precision | Fraction of flagged observations that are actual anomalies |
-| Recall | Fraction of actual anomalies detected |
-| F1 score | Harmonic mean of precision and recall |
-| False-positive rate | Fraction of normal observations incorrectly flagged |
+- All current training and evaluation data are synthetic.
+- Sentinel uses a single numeric feature.
+- Classifier features and labels are generated from a known synthetic rule, including a small amount of missing values.
+- Anomaly thresholds trade precision against recall. A more sensitive threshold catches more anomalies and raises false positives.
+- `calibrate.py` can select an alternative threshold on synthetic validation data. That candidate is separate from the CLI default of `0.0`.
+- Some evaluation scripts still use a machine-specific project path.
+- Saved sklearn artifacts can be sensitive to scikit-learn version differences.
+- The repository is experimental and still evolving.
 
-### Threshold Experiments
+## Development status
 
-Initial experiments compared the default threshold (`0.0`) with a candidate threshold (`0.05`).
+**Implemented**
 
-On one fresh synthetic evaluation:
+- Shared `BaseMind` interface
+- Sentinel Isolation Forest training, CLI inference, and synthetic evaluation scripts
+- Classifier Random Forest training on synthetic churn data
+- Joblib save/load for both minds
+- pytest coverage for Sentinel and the classifier
 
-| Metric | Threshold 0.00 | Threshold 0.05 |
-|---|---:|---:|
-| Precision | 51.9% | 40.1% |
-| Recall | 71.3% | 81.7% |
-| F1 score | 60.1% | 53.8% |
-| False-positive rate | 1.3% | 2.4% |
+**Not implemented**
 
-These results illustrate the trade-off between catching more anomalies and generating more false alarms. They are results from a controlled synthetic benchmark, not a guarantee of production performance.
+- Formal packaging (`requirements.txt` / `pyproject.toml`)
+- Classifier inference CLI
+- Portable paths in every Sentinel evaluation script
+- Automated CI
+- Experiment tracking or model monitoring
+- Evaluation on representative real-world data
+- License
 
-The current default remains `0.0`. The `0.05` threshold is an alternative for further evaluation, not a universally optimal setting.
-
-## Run Tests
-
-```bash
-python -m pytest -v
-```
-
-The tests cover prediction behavior and model training. Run the full suite after modifying model code or threshold logic.
-
-## Limitations
-
-- The current model operates on a single numerical feature.
-- Training and evaluation data are synthetic.
-- Real-world data may have different distributions and anomaly patterns.
-- Thresholds should be selected according to the intended application's tolerance for missed anomalies and false alarms.
-- Performance on synthetic data does not establish real-world reliability.
-
-## Roadmap
-
-- [x] Train and persist the first model.
-- [x] Implement command-line inference.
-- [x] Evaluate robustness across synthetic scenarios.
-- [x] Compare decision thresholds.
-- [x] Add automated tests.
-- [ ] Complete final documentation and repository cleanup.
-- [ ] Evaluate with representative real-world data.
-- [ ] Integrate Sentinel into the broader ManyMind architecture.
+Possible later work: reproducible evaluation, portable path handling, dependency management, experiment tracking, model monitoring, and CI.
 
 ## License
 
