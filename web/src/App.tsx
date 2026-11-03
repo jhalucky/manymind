@@ -3,9 +3,11 @@ import {
   getStatus,
   scoreClassifierCsv,
   scoreClassifierSample,
+  scoreGuard,
   scoreSentinelCsv,
   scoreSentinelSample,
   type ClassifierResponse,
+  type GuardResponse,
   type Mind,
   type SentinelResponse,
   type StatusResponse,
@@ -15,6 +17,8 @@ function App() {
   const [mind, setMind] = useState<Mind>("sentinel");
   const [sentinel, setSentinel] = useState<SentinelResponse | null>(null);
   const [classifier, setClassifier] = useState<ClassifierResponse | null>(null);
+  const [guard, setGuard] = useState<GuardResponse | null>(null);
+  const [guardText, setGuardText] = useState("");
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -33,6 +37,7 @@ function App() {
     try {
       setSentinel(await scoreSentinelSample());
       setClassifier(null);
+      setGuard(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sentinel sample failed.");
     } finally {
@@ -46,6 +51,7 @@ function App() {
     try {
       setClassifier(await scoreClassifierSample());
       setSentinel(null);
+      setGuard(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Classifier sample failed.");
     } finally {
@@ -66,9 +72,11 @@ function App() {
       if (mind === "sentinel") {
         setSentinel(await scoreSentinelCsv(csv));
         setClassifier(null);
+        setGuard(null);
       } else {
         setClassifier(await scoreClassifierCsv(csv));
         setSentinel(null);
+        setGuard(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "CSV upload failed.");
@@ -88,7 +96,7 @@ function App() {
         </div>
         <p className="hidden font-subhead text-[11px] uppercase tracking-[0.18em] text-zinc-500 sm:block">
           {status
-            ? `Sentinel ${status.sentinel.available ? "ready" : "missing"} · Classifier ${status.classifier.source || "loading"}`
+            ? `Sentinel ${status.sentinel.available ? "ready" : "missing"} · Classifier ${status.classifier.source || "loading"} · Guard ${status.guard?.available ? "ready" : "missing"}`
             : "Loading minds"}
         </p>
       </header>
@@ -100,13 +108,15 @@ function App() {
           </h1>
           <p className="mx-auto mt-4 max-w-xl font-subhead text-sm leading-relaxed text-zinc-400">
             {mind === "sentinel"
-              ? "Sentinel is a fraud-review scorer for a payments desk: unusual cards first. Upload a CSV with V1–V28 and Amount."
-              : "Classifier is a churn-review scorer for a telecom desk: which customers look likely to leave. Upload a CSV with IBM Telco columns."}
+              ? "Sentinel is a fraud-review scorer for a payments desk. Upload a CSV with V1–V28 and Amount."
+              : mind === "classifier"
+                ? "Classifier is a churn-review scorer for a telecom desk. Upload a CSV with IBM Telco columns."
+                : "Guard checks a KYC / bait SMS. Paste the message. Do not paste OTP, PIN, or Aadhaar."}
           </p>
         </section>
 
         <div className="mb-5 flex justify-center gap-2">
-          {(["sentinel", "classifier"] as const).map((item) => (
+          {(["sentinel", "classifier", "guard"] as const).map((item) => (
             <button
               key={item}
               type="button"
@@ -120,47 +130,85 @@ function App() {
                   : "border border-white/10 text-zinc-500"
               }`}
             >
-              {item === "sentinel" ? "Sentinel" : "Classifier"}
+              {item === "sentinel" ? "Sentinel" : item === "classifier" ? "Classifier" : "Guard"}
             </button>
           ))}
         </div>
 
-        <div className="space-y-3">
-          {mind === "sentinel" ? (
-            <button
-              type="button"
-              onClick={runSentinel}
-              disabled={loading}
-              className="h-12 w-full rounded-full bg-accent font-subhead text-xs tracking-wide text-black disabled:opacity-50"
-            >
-              {loading ? "Scoring cards…" : "Score sample credit-card CSV"}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={runClassifier}
-              disabled={loading}
-              className="h-12 w-full rounded-full bg-accent font-subhead text-xs tracking-wide text-black disabled:opacity-50"
-            >
-              {loading ? "Scoring customers…" : "Score sample telco CSV"}
-            </button>
-          )}
-          <label className="flex h-12 w-full cursor-pointer items-center justify-center rounded-full border border-white/15 font-subhead text-xs tracking-wide text-zinc-300">
-            {mind === "sentinel" ? "Upload card CSV" : "Upload telco CSV"}
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              disabled={loading}
-              onChange={onUpload}
+        {mind === "guard" ? (
+          <form
+            className="space-y-3"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setLoading(true);
+              setError("");
+              try {
+                setGuard(await scoreGuard(guardText));
+                setSentinel(null);
+                setClassifier(null);
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Guard failed.");
+              } finally {
+                setLoading(false);
+              }
+            }}
+          >
+            <textarea
+              value={guardText}
+              onChange={(event) => setGuardText(event.target.value)}
+              rows={5}
+              placeholder="Paste the SMS or WhatsApp here"
+              className="w-full rounded-2xl border border-white/10 bg-panel/90 p-4 font-sans text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
             />
-          </label>
-          <p className="px-1 font-subhead text-[11px] leading-relaxed text-zinc-600">
-            {mind === "sentinel"
-              ? "Headers must include V1…V28 and Amount. First 200 rows are scored."
-              : "Headers must match IBM Telco (tenure, Contract, MonthlyCharges, …). First 200 rows are scored."}
-          </p>
-        </div>
+            <button
+              type="submit"
+              disabled={loading || !guardText.trim()}
+              className="h-12 w-full rounded-full bg-accent font-subhead text-xs tracking-wide text-black disabled:opacity-50"
+            >
+              {loading ? "Checking…" : "Check with Guard"}
+            </button>
+            <p className="px-1 font-subhead text-[11px] leading-relaxed text-zinc-600">
+              Seed templates, not a bank dump. Never paste OTP, UPI PIN, or Aadhaar.
+            </p>
+          </form>
+        ) : (
+          <div className="space-y-3">
+            {mind === "sentinel" ? (
+              <button
+                type="button"
+                onClick={runSentinel}
+                disabled={loading}
+                className="h-12 w-full rounded-full bg-accent font-subhead text-xs tracking-wide text-black disabled:opacity-50"
+              >
+                {loading ? "Scoring cards…" : "Score sample credit-card CSV"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={runClassifier}
+                disabled={loading}
+                className="h-12 w-full rounded-full bg-accent font-subhead text-xs tracking-wide text-black disabled:opacity-50"
+              >
+                {loading ? "Scoring customers…" : "Score sample telco CSV"}
+              </button>
+            )}
+            <label className="flex h-12 w-full cursor-pointer items-center justify-center rounded-full border border-white/15 font-subhead text-xs tracking-wide text-zinc-300">
+              {mind === "sentinel" ? "Upload card CSV" : "Upload telco CSV"}
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                disabled={loading}
+                onChange={onUpload}
+              />
+            </label>
+            <p className="px-1 font-subhead text-[11px] leading-relaxed text-zinc-600">
+              {mind === "sentinel"
+                ? "Headers must include V1…V28 and Amount. First 200 rows are scored."
+                : "Headers must match IBM Telco (tenure, Contract, MonthlyCharges, …). First 200 rows are scored."}
+            </p>
+          </div>
+        )}
 
         {error ? <p className="mt-5 font-subhead text-sm text-red-400">{error}</p> : null}
 
@@ -216,16 +264,40 @@ function App() {
             </article>
           ))}
 
-          {sentinel || classifier ? (
+          {guard ? (
+            <article className="rounded-2xl border border-white/10 bg-panel/80 p-4">
+              <div className="flex items-baseline justify-between gap-3">
+                <h2 className="font-heading text-lg font-medium tracking-tight">Guard</h2>
+                <span
+                  className={`rounded-full px-2 py-0.5 font-subhead text-[11px] uppercase tracking-wider ${
+                    guard.prediction === "bait"
+                      ? "bg-red-500/10 text-red-300"
+                      : "bg-emerald-500/10 text-emerald-300"
+                  }`}
+                >
+                  {guard.prediction}
+                </span>
+              </div>
+              <p className="mt-2 font-subhead text-xs text-zinc-500">
+                bait probability {(guard.bait_probability * 100).toFixed(0)}%
+                {guard.flags.length ? ` · ${guard.flags.join(", ")}` : ""}
+              </p>
+              <p className="mt-2 font-subhead text-xs leading-relaxed text-zinc-400">
+                {guard.advice}
+              </p>
+            </article>
+          ) : null}
+
+          {sentinel || classifier || guard ? (
             <p className="font-subhead text-[11px] leading-relaxed text-zinc-600">
-              {(sentinel ?? classifier)?.disclaimer}
+              {(sentinel ?? classifier ?? guard)?.disclaimer}
             </p>
           ) : null}
         </section>
       </main>
 
       <footer className="pb-8 text-center font-subhead text-[11px] text-zinc-600">
-        Public ULB cards + IBM Telco. Not a live bank or carrier.
+        Public ULB cards, IBM Telco, and a KYC seed. Not a live bank or carrier.
       </footer>
     </div>
   );

@@ -1,0 +1,17 @@
+text,label,category
+Dear customer your KYC is pending. Update now or account will be blocked: http://bit.ly/kyc-upd Reply YES,1,kyc_update
+Dear customer your KYC is pending. Update now or account will be blocked: https://verify-kyc-help.in/update Do it in 10 minutes.,1,kyc_update
+Dear customer your KYC is pending. Update now or account will be blocked: https://aadhaar-update.helpdesk-in.com,1,kyc_update
+KYC expired. Verify today to keep your account active https://refund-claim.win/in Reply YES,1,kyc_update
+KYC expired. Verify today to keep your account active https://tinyurl.com/kyc24hr Do it in 10 minutes.,1,kyc_update
+KYC expired. Verify today to keep your account active https://bank-secure-login.xyz/kyc,1,kyc_update
+Urgent KYC update required within 24 hours else services stop http://bit.ly/kyc-upd Reply YES,1,kyc_update
+Urgent KYC update required within 24 hours else services stop https://verify-kyc-help.in/update Do it in 10 minutes.,1,kyc_update
+YourBank: 184392 is your OTP for login. Do not share it with anyone.,0,otp
+"SBI: 550211 is your OTP for login. Do not share it with anyone. If this was not you, open the official app.",0,otp
+HDFC Bank: 904176 is your OTP for login. Do not share it with anyone. Do not share OTP or PIN.,0,otp
+ICICI Bank OTP 184392 for UPI send. Valid 10 minutes. Do not share.,0,otp
+"Axis Bank OTP 550211 for UPI send. Valid 10 minutes. Do not share. If this was not you, open the official app.",0,otp
+Kotak OTP 904176 for UPI send. Valid 10 minutes. Do not share. Do not share OTP or PIN.,0,otp
+Your YourBank net banking OTP is 184392. Never give this to callers.,0,otp
+"Your SBI net banking OTP is 550211. Never give this to callers. If this was not you, open the official app.",0,otp

@@ -23,6 +23,8 @@ from manymind.minds.sentinel.model import DEFAULT_THRESHOLD
 from manymind.minds.sentinel.predict import MODEL_PATH as SENTINEL_PATH
 from manymind.minds.classifier.predict import predict_frame as score_telco_frame
 from manymind.minds.sentinel.evaluation import load_calibrated_threshold
+from manymind.minds.kyc.predict import ARTIFACT_PATH as GUARD_PATH
+from manymind.minds.kyc.predict import load_model as load_guard
 from manymind.minds.sentinel.predict import load_model, predict_csv as score_card_csv, predict_frame as score_card_frame, predict_value
 
 
@@ -36,6 +38,7 @@ PORT = 8787
 _sentinel = None
 _classifier = None
 _classifier_source = "unavailable"
+_guard = None
 
 
 def get_sentinel():
@@ -70,6 +73,13 @@ def get_classifier():
     return _classifier
 
 
+def get_guard():
+    global _guard
+    if _guard is None:
+        _guard = load_guard()
+    return _guard
+
+
 def model_status() -> dict:
     try:
         get_sentinel()
@@ -77,6 +87,10 @@ def model_status() -> dict:
         pass
     try:
         get_classifier()
+    except Exception:
+        pass
+    try:
+        get_guard()
     except Exception:
         pass
     return {
@@ -92,10 +106,14 @@ def model_status() -> dict:
             "source": _classifier_source,
             "features": list(FEATURE_NAMES),
         },
+        "guard": {
+            "available": GUARD_PATH.is_file() or _guard is not None,
+            "artifact": str(GUARD_PATH),
+        },
         "disclaimer": (
-            "Sentinel is trained on the public ULB credit-card set. "
-            "Classifier is trained on IBM Telco Churn. "
-            "These are public benchmarks, not a live bank or carrier."
+            "Sentinel: public ULB cards. Classifier: IBM Telco. "
+            "Guard: hand-written KYC seed, not a bank dump. "
+            "Not a live bank, carrier, or police tool."
         ),
     }
 
@@ -216,6 +234,18 @@ def run_classifier(payload: dict) -> dict:
     }
 
 
+def run_guard(payload: dict) -> dict:
+    text = payload.get("text")
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("Paste an SMS or WhatsApp message.")
+    if any(token in text.lower() for token in ("upi pin", "aadhaar number", "cvv")):
+        raise ValueError("Do not paste OTP, UPI PIN, CVV, or Aadhaar numbers.")
+    result = get_guard().explain(text.strip())
+    result["mind"] = "guard"
+    result["disclaimer"] = model_status()["disclaimer"]
+    return result
+
+
 class ManyMindHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         print(f"[manymind] {self.address_string()} {format % args}")
@@ -268,6 +298,9 @@ class ManyMindHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/classifier":
                 self._send_json(200, run_classifier(payload))
+                return
+            if path == "/api/guard":
+                self._send_json(200, run_guard(payload))
                 return
         except FileNotFoundError as exc:
             self._send_json(404, {"error": str(exc)})

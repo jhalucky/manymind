@@ -1,4 +1,4 @@
-export type Mind = "sentinel" | "classifier";
+export type Mind = "sentinel" | "classifier" | "guard";
 
 export type SentinelResult = {
   index?: number;
@@ -57,6 +57,18 @@ export type StatusResponse = {
     source: string;
     features: string[];
   };
+  guard?: { available: boolean; artifact: string };
+  disclaimer: string;
+};
+
+export type GuardResponse = {
+  mind: "guard";
+  text: string;
+  prediction: "bait" | "ok";
+  bait_probability: number;
+  threshold: number;
+  flags: string[];
+  advice: string;
   disclaimer: string;
 };
 
@@ -104,4 +116,8 @@ export function scoreSentinelCsv(csv: string) {
 
 export function scoreClassifierCsv(csv: string) {
   return post<ClassifierResponse>("/api/classifier", { csv });
+}
+
+export function scoreGuard(text: string) {
+  return post<GuardResponse>("/api/guard", { text });
 }
