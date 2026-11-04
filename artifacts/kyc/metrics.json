@@ -1,19 +1,19 @@
 {
   "name": "Guard",
   "use_case": "KYC / bait SMS check",
-  "dataset": "hand-written seed (not a bank dump)",
-  "n_train": 336,
-  "n_holdout": 84,
-  "holdout_bait_rate": 0.5714285714285714,
+  "dataset": "UCI SMS Spam (cleaned) plus KYC seed templates",
+  "n_train": 4793,
+  "n_holdout": 1199,
+  "holdout_bait_rate": 0.16430358632193495,
   "threshold": 0.5,
   "holdout": {
-    "accuracy": 0.9642857142857143,
-    "precision": 0.9411764705882353,
-    "recall": 1.0,
-    "f1": 0.9696969696969697,
-    "roc_auc": 1.0
+    "accuracy": 0.9808173477898249,
+    "precision": 0.9393939393939394,
+    "recall": 0.9441624365482234,
+    "f1": 0.9417721518987342,
+    "roc_auc": 0.9942044844321509
   },
   "sklearn_version": "1.9.1",
-  "trained_at": "2026-11-03T05:33:07.426628+00:00",
-  "disclaimer": "Trained on synthetic seed templates. A bait label is a warning, not proof of a crime. Never share OTP, PIN, or Aadhaar."
+  "trained_at": "2026-11-03T05:51:31.664424+00:00",
+  "disclaimer": "Trained on the UCI SMS Spam collection plus KYC seed templates. A bait/spam label is a warning, not proof of a crime. Never share OTP, PIN, or Aadhaar."
 }

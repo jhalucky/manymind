@@ -15,7 +15,7 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import train_test_split
 
-from manymind.minds.kyc.data import load_seed
+from manymind.minds.kyc.data import load_training_messages
 from manymind.minds.kyc.model import Guard
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -23,9 +23,9 @@ ARTIFACT_PATH = ROOT / "artifacts" / "kyc" / "model.joblib"
 METRICS_PATH = ROOT / "artifacts" / "kyc" / "metrics.json"
 
 
-def train_guard(seed_path: Path | None = None, artifact_path: Path | None = None) -> dict:
+def train_guard(artifact_path: Path | None = None) -> dict:
     artifact_path = Path(artifact_path) if artifact_path is not None else ARTIFACT_PATH
-    X, y = load_seed(seed_path)
+    X, y = load_training_messages()
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
@@ -37,7 +37,7 @@ def train_guard(seed_path: Path | None = None, artifact_path: Path | None = None
     metrics = {
         "name": "Guard",
         "use_case": "KYC / bait SMS check",
-        "dataset": "hand-written seed (not a bank dump)",
+        "dataset": "UCI SMS Spam (cleaned) plus KYC seed templates",
         "n_train": int(len(X_train)),
         "n_holdout": int(len(X_test)),
         "holdout_bait_rate": float(y_test.mean()),
@@ -52,8 +52,8 @@ def train_guard(seed_path: Path | None = None, artifact_path: Path | None = None
         "sklearn_version": sklearn.__version__,
         "trained_at": datetime.now(timezone.utc).isoformat(),
         "disclaimer": (
-            "Trained on synthetic seed templates. "
-            "A bait label is a warning, not proof of a crime. "
+            "Trained on the UCI SMS Spam collection plus KYC seed templates. "
+            "A bait/spam label is a warning, not proof of a crime. "
             "Never share OTP, PIN, or Aadhaar."
         ),
     }
